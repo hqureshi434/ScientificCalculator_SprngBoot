@@ -1,6 +1,9 @@
 package com.example.scicalculator.domain;
 
 import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.envers.Audited;
 
 import java.math.BigDecimal;
@@ -8,6 +11,8 @@ import java.time.Instant;
 
 @Entity
 @Audited
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // Required by JPA — Hibernate needs a no-arg constructor to instantiate entities
 @Table(
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_calculation_step_seq",
@@ -30,18 +35,14 @@ public class CalculationStep {
     @Column(nullable = false)
     private Operation operation;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 38, scale = 10)
     private BigDecimal operand;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 38, scale = 10)
     private BigDecimal resultAfter;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
-
-    protected CalculationStep() {
-        // Required by JPA — Hibernate needs a no-arg constructor to instantiate entities
-    }
 
     public CalculationStep(Calculation calculation,
                            int sequenceNumber,
@@ -58,33 +59,5 @@ public class CalculationStep {
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public Calculation getCalculation() {
-        return calculation;
-    }
-
-    public int getSequenceNumber() {
-        return sequenceNumber;
-    }
-
-    public Operation getOperation() {
-        return operation;
-    }
-
-    public BigDecimal getOperand() {
-        return operand;
-    }
-
-    public BigDecimal getResultAfter() {
-        return resultAfter;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
     }
 }

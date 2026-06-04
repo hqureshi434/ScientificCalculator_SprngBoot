@@ -1,36 +1,43 @@
 package com.example.scicalculator.domain;
 
 import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
+@Getter
+@Setter
 @Audited
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // Required by JPA — Hibernate needs a no-arg constructor to instantiate entities
 public class Calculation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     private String name;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
+    @Setter(AccessLevel.NONE)
     private User owner;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 38, scale = 10)
     private BigDecimal currentValue;
 
     @Column(nullable = false, updatable = false)
+    @Setter(AccessLevel.NONE)
     private Instant createdAt;
 
     @Column(nullable = false)
+    @Setter(AccessLevel.NONE)
     private Instant updatedAt;
-
-    protected Calculation() {
-        // Required by JPA — Hibernate needs a no-arg constructor to instantiate entities
-    }
 
     public Calculation(User owner) {
         this.owner = owner;
@@ -52,37 +59,5 @@ public class Calculation {
     @PreUpdate
     void onUpdate() {
         this.updatedAt = Instant.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public User getOwner() {
-        return owner;
-    }
-
-    public BigDecimal getCurrentValue() {
-        return currentValue;
-    }
-
-    public void setCurrentValue(BigDecimal currentValue) {
-        this.currentValue = currentValue;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
     }
 }

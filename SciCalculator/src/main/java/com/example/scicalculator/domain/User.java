@@ -1,5 +1,9 @@
 package com.example.scicalculator.domain;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.time.Instant;
@@ -7,9 +11,13 @@ import java.time.Instant;
 @Entity
 @Table(name = "users")
 @Audited
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // Required by JPA — Hibernate needs a no-arg constructor to instantiate entities
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     @Column(nullable = false, unique = true)
@@ -23,11 +31,8 @@ public class User {
     private Role role;
 
     @Column(nullable = false, updatable = false)
+    @Setter(AccessLevel.NONE)
     private Instant createdAt;
-
-    protected User() {
-        // Required by JPA — Hibernate needs a no-arg constructor to instantiate entities
-    }
 
     public User(String username, String passwordHash, Role role) {
         this.username = username;
@@ -38,37 +43,5 @@ public class User {
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPasswordHash() {
-        return passwordHash;
-    }
-
-    public void setPasswordHash(String passwordHash) {
-        this.passwordHash = passwordHash;
-    }
-
-    public Role getRole() {
-        return role;
-    }
-
-    public void setRole(Role role) {
-        this.role = role;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
     }
 }
