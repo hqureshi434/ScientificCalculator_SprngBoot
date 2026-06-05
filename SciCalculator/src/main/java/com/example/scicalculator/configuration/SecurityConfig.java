@@ -1,5 +1,6 @@
 package com.example.scicalculator.configuration;
 
+import com.example.scicalculator.audit.AuditUserFilter;
 import com.example.scicalculator.security.JwtAuthenticationFilter;
 import com.example.scicalculator.security.JwtService;
 import org.springframework.context.annotation.Bean;
@@ -76,7 +77,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new AuditUserFilter(), JwtAuthenticationFilter.class);
         return http.build();
     }
 
@@ -91,7 +93,8 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new AuditUserFilter(), JwtAuthenticationFilter.class);
         return http.build();
     }
 }

@@ -5,6 +5,7 @@ import com.example.scicalculator.domain.CalculationStep;
 import com.example.scicalculator.domain.Operation;
 import com.example.scicalculator.domain.Role;
 import com.example.scicalculator.domain.User;
+import com.example.scicalculator.exception.CalculationNotFoundException;
 import com.example.scicalculator.repository.CalculationRepository;
 import com.example.scicalculator.repository.CalculationStepRepository;
 import jakarta.persistence.EntityManager;
@@ -60,22 +61,41 @@ class CalculationServiceTest {
         txTemplate = new TransactionTemplate(transactionManager);
     }
 
-    /** Seeds a User and an empty Calculation in a committed transaction; returns the calculation id. */
-    private Long seedEmptyCalculation() {
+    /** Holds a seeded calculation's id alongside its owner's username, since loads are owner-scoped. */
+    private record Seed(Long calculationId, String ownerUsername) {
+    }
+
+    /** Seeds a User and an empty Calculation in a committed transaction. */
+    private Seed seedEmptyCalculation() {
+        return seedCalculationOwnedBy("user-" + USER_SEQ.incrementAndGet());
+    }
+
+    /** Seeds a User with the exact given username and an empty Calculation they own. */
+    private Seed seedCalculationOwnedBy(String username) {
         return txTemplate.execute(status -> {
-            User owner = new User("user-" + USER_SEQ.incrementAndGet(), "hash", Role.USER);
+            User owner = new User(username, "hash", Role.USER);
             entityManager.persist(owner);
             Calculation calculation = new Calculation(owner);
             entityManager.persist(calculation);
-            return calculation.getId();
+            return new Seed(calculation.getId(), username);
+        });
+    }
+
+    /** Seeds just a User row with the given username (no calculation). */
+    private void seedUser(String username) {
+        txTemplate.execute(status -> {
+            entityManager.persist(new User(username, "hash", Role.USER));
+            return null;
         });
     }
 
     @Test
     void appendingValidStepPersistsStepAndUpdatesCurrentValue() {
-        Long calculationId = seedEmptyCalculation();
+        Seed seed = seedEmptyCalculation();
+        Long calculationId = seed.calculationId();
 
-        CalculationStep step = calculationService.appendStep(calculationId, Operation.ADD, new BigDecimal("5"));
+        CalculationStep step = calculationService.appendStep(
+                calculationId, seed.ownerUsername(), Operation.ADD, new BigDecimal("5"));
 
         // The returned step is the first one and carries the new running value.
         assertThat(step.getSequenceNumber()).isEqualTo(1);
@@ -92,10 +112,11 @@ class CalculationServiceTest {
 
     @Test
     void divideByZeroRollsBackLeavingNoOrphanStepOrChangedValue() {
-        Long calculationId = seedEmptyCalculation();
+        Seed seed = seedEmptyCalculation();
+        Long calculationId = seed.calculationId();
 
         // One valid step first, so there is committed state for the failed attempt to threaten.
-        calculationService.appendStep(calculationId, Operation.ADD, new BigDecimal("5"));
+        calculationService.appendStep(calculationId, seed.ownerUsername(), Operation.ADD, new BigDecimal("5"));
 
         Calculation beforeFailure = calculationRepository.findById(calculationId).orElseThrow();
         BigDecimal valueBefore = beforeFailure.getCurrentValue();
@@ -106,7 +127,7 @@ class CalculationServiceTest {
         // Divide by zero: the engine throws, and the exception must propagate OUT of the
         // @Transactional method so Spring rolls the whole step back.
         assertThatThrownBy(() ->
-                calculationService.appendStep(calculationId, Operation.DIVIDE, BigDecimal.ZERO))
+                calculationService.appendStep(calculationId, seed.ownerUsername(), Operation.DIVIDE, BigDecimal.ZERO))
                 .isInstanceOf(ArithmeticException.class);
 
         // Fresh read: the failed attempt left no trace.
@@ -122,11 +143,12 @@ class CalculationServiceTest {
 
     @Test
     void secondStepIncrementsSequenceNumberAndChainsFromCurrentValue() {
-        Long calculationId = seedEmptyCalculation();
+        Seed seed = seedEmptyCalculation();
+        Long calculationId = seed.calculationId();
 
-        calculationService.appendStep(calculationId, Operation.ADD, new BigDecimal("5"));
+        calculationService.appendStep(calculationId, seed.ownerUsername(), Operation.ADD, new BigDecimal("5"));
         CalculationStep second =
-                calculationService.appendStep(calculationId, Operation.MULTIPLY, new BigDecimal("2"));
+                calculationService.appendStep(calculationId, seed.ownerUsername(), Operation.MULTIPLY, new BigDecimal("2"));
 
         // Second step is sequence 2 and chains off the first step's result (5 * 2 = 10).
         assertThat(second.getSequenceNumber()).isEqualTo(2);
@@ -142,7 +164,118 @@ class CalculationServiceTest {
         long unknownId = 999_999L;
 
         assertThatThrownBy(() ->
-                calculationService.appendStep(unknownId, Operation.ADD, new BigDecimal("1")))
-                .isInstanceOf(IllegalArgumentException.class);
+                calculationService.appendStep(unknownId, "user-nobody", Operation.ADD, new BigDecimal("1")))
+                .isInstanceOf(CalculationNotFoundException.class);
+    }
+
+    @Test
+    void createCalculationPersistsCalculationOwnedByGivenUser() {
+        String username = "calcuser-create-" + USER_SEQ.incrementAndGet();
+        seedUser(username);
+
+        Calculation created = calculationService.createCalculation(username, null);
+
+        // currentValue is seeded in the constructor, so it is readable on the returned entity.
+        assertThat(created.getCurrentValue()).isEqualByComparingTo(BigDecimal.ZERO);
+        // Prove ownership via the owner-scoped finder rather than navigating the LAZY owner
+        // association on a detached entity (open-in-view is off — that would throw).
+        assertThat(calculationRepository.findByIdAndOwnerUsername(created.getId(), username)).isPresent();
+    }
+
+    @Test
+    void getCalculationReturnsCalculationForItsOwner() {
+        Seed seed = seedCalculationOwnedBy("calcuser-get-" + USER_SEQ.incrementAndGet());
+
+        Calculation found = calculationService.getCalculation(seed.calculationId(), seed.ownerUsername());
+
+        assertThat(found.getId()).isEqualTo(seed.calculationId());
+        // Ownership is confirmed via the finder (LAZY owner can't be navigated on the detached entity).
+        assertThat(calculationRepository.findByIdAndOwnerUsername(seed.calculationId(), seed.ownerUsername()))
+                .isPresent();
+    }
+
+    @Test
+    void getStepsReturnsOwnersStepsInSequenceOrder() {
+        Seed seed = seedCalculationOwnedBy("calcuser-steps-" + USER_SEQ.incrementAndGet());
+        calculationService.appendStep(seed.calculationId(), seed.ownerUsername(), Operation.ADD, new BigDecimal("5"));
+        calculationService.appendStep(seed.calculationId(), seed.ownerUsername(), Operation.MULTIPLY, new BigDecimal("2"));
+
+        List<CalculationStep> steps = calculationService.getSteps(seed.calculationId(), seed.ownerUsername());
+
+        assertThat(steps).hasSize(2);
+        assertThat(steps.get(0).getSequenceNumber()).isEqualTo(1);
+        assertThat(steps.get(1).getSequenceNumber()).isEqualTo(2);
+        assertThat(steps.get(1).getResultAfter()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void crossOwnerAccessIsRejectedForEveryOwnerScopedMethod() {
+        // Calculation belongs to A; B must not be able to read or mutate it.
+        Seed owned = seedCalculationOwnedBy("calcuser-A-" + USER_SEQ.incrementAndGet());
+        String otherUser = "calcuser-B-" + USER_SEQ.incrementAndGet();
+        seedUser(otherUser);
+
+        assertThatThrownBy(() ->
+                calculationService.appendStep(owned.calculationId(), otherUser, Operation.ADD, new BigDecimal("1")))
+                .isInstanceOf(CalculationNotFoundException.class);
+
+        assertThatThrownBy(() ->
+                calculationService.getCalculation(owned.calculationId(), otherUser))
+                .isInstanceOf(CalculationNotFoundException.class);
+
+        assertThatThrownBy(() ->
+                calculationService.getSteps(owned.calculationId(), otherUser))
+                .isInstanceOf(CalculationNotFoundException.class);
+    }
+
+    @Test
+    void createCalculationForUnknownUserThrowsIllegalState() {
+        String username = "calcuser-ghost-" + USER_SEQ.incrementAndGet();  // never persisted
+
+        assertThatThrownBy(() ->
+                calculationService.createCalculation(username, null))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void getHistoryReturnsOneEntryPerStepInRevisionOrder() {
+        Seed seed = seedCalculationOwnedBy("calcuser-hist-" + USER_SEQ.incrementAndGet());
+        calculationService.appendStep(seed.calculationId(), seed.ownerUsername(), Operation.ADD, new BigDecimal("5"));
+        calculationService.appendStep(seed.calculationId(), seed.ownerUsername(), Operation.MULTIPLY, new BigDecimal("2"));
+
+        List<StepRevision> history = calculationService.getHistory(seed.calculationId(), seed.ownerUsername());
+
+        assertThat(history).hasSize(2);
+
+        StepRevision first = history.get(0);
+        assertThat(first.sequenceNumber()).isEqualTo(1);
+        assertThat(first.operation()).isEqualTo(Operation.ADD);
+        assertThat(first.operand()).isEqualByComparingTo("5");
+        assertThat(first.resultAfter()).isEqualByComparingTo("5");
+        // No request filter runs in a service test, so AuditUserContext is empty and the listener
+        // stamps the "system" fallback — asserting it confirms the fallback path.
+        assertThat(first.username()).isEqualTo("system");
+
+        StepRevision second = history.get(1);
+        assertThat(second.sequenceNumber()).isEqualTo(2);
+        assertThat(second.operation()).isEqualTo(Operation.MULTIPLY);
+        assertThat(second.operand()).isEqualByComparingTo("2");
+        assertThat(second.resultAfter()).isEqualByComparingTo("10");
+        assertThat(second.username()).isEqualTo("system");
+
+        // Ordered oldest-first by revision number, which matches sequence order here.
+        assertThat(first.revision()).isLessThan(second.revision());
+    }
+
+    @Test
+    void crossOwnerGetHistoryThrowsCalculationNotFound() {
+        Seed owned = seedCalculationOwnedBy("calcuser-histA-" + USER_SEQ.incrementAndGet());
+        calculationService.appendStep(owned.calculationId(), owned.ownerUsername(), Operation.ADD, new BigDecimal("5"));
+        String otherUser = "calcuser-histB-" + USER_SEQ.incrementAndGet();
+        seedUser(otherUser);
+
+        assertThatThrownBy(() ->
+                calculationService.getHistory(owned.calculationId(), otherUser))
+                .isInstanceOf(CalculationNotFoundException.class);
     }
 }
