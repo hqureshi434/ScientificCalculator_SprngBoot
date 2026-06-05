@@ -25,3 +25,10 @@ spring:
 logging:
   level:
     org.hibernate.SQL: DEBUG
+
+# JWT signing config. DEV PLACEHOLDER ONLY — this secret is committed to the repo and must NOT be
+# used in production. For the real app, move it to an environment variable / secret manager and
+# inject it (e.g. ${JWT_SECRET}). Secret must be >= 32 bytes (256 bits) for HS256.
+jwt:
+  secret: dev-only-secret-change-me-please-0123456789-abcdef-ghijklmnop
+  expiration-ms: 3600000   # 1 hour
