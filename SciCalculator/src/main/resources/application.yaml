@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: SciCalculator
+
+  datasource:
+    url: jdbc:h2:mem:scicalc;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+
+# JWT signing config. DEV PLACEHOLDER ONLY — this secret is committed to the repo and must NOT be
+# used in production. For the real app, move it to an environment variable / secret manager and
+# inject it (e.g. ${JWT_SECRET}). Secret must be >= 32 bytes (256 bits) for HS256.
+jwt:
+  secret: dev-only-secret-change-me-please-0123456789-abcdef-ghijklmnop
+  expiration-ms: 3600000   # 1 hour
