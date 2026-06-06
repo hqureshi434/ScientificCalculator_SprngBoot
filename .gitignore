@@ -35,3 +35,18 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### OS files ###
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+### Environment / secrets ###
+.env
+.env.*
+!.env.example
+
+### Node / React (the frontend/ subproject also has its own .gitignore) ###
+node_modules/
+*.tsbuildinfo

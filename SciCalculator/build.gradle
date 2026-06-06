@@ -1,0 +1,63 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.6'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+description = 'scicalculator'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	jjwtVersion = '0.13.0'
+}
+
+dependencies {
+	// Web + persistence + validation (same starters as Hussein's prototype)
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+	// Security (calculator needs it; prototype didn't list it)
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+	// Hibernate Envers — audit trail (version managed by Spring Boot BOM)
+	implementation 'org.hibernate.orm:hibernate-envers'
+
+	// JWT — jjwt split: api compile-time, impl + jackson at runtime
+	implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
+	runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
+	runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
+
+	// Lombok (compile-time only + annotation processor) — matches Hussein's setup
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	// H2 in-memory DB for the sandbox (prototype uses Postgres; calculator uses H2)
+	runtimeOnly 'com.h2database:h2'
+	implementation 'org.springframework.boot:spring-boot-h2console'
+
+	// DevTools (optional, convenient for restarts)
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	// Tests
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.security:spring-security-test'
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
